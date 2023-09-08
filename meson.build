@@ -1,4 +1,4 @@
-project('glpaper', 'c', default_options : ['buildtype=release', 'warning_level=2'])
+project('glpaper', 'c', default_options : ['buildtype=debug', 'warning_level=2'])
 cc = meson.get_compiler('c')
 
 inc = include_directories('inc')
@@ -10,7 +10,8 @@ executable(meson.project_name(),
 'src/main.c',
 'src/paper.c',
 'src/utils.c',
-'glad/glad.c',
+'glad/egl.c',
+'glad/gles2.c',
 'proto/wlr-layer-shell-unstable-v1-protocol.c',
 'proto/xdg-output-unstable-v1-protocol.c',
 'proto/xdg-shell-protocol.c',

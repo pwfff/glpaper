@@ -1,18 +1,18 @@
 /*
- *  Copyright (C) 2019-2020 Scoopta
- *  This file is part of GLPaper
- *  GLPaper is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+ *	Copyright (C) 2019-2020 Scoopta
+ *	This file is part of GLPaper
+ *	GLPaper is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
 
-    GLPaper is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+	GLPaper is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with GLPaper.  If not, see <http://www.gnu.org/licenses/>.
+	You should have received a copy of the GNU General Public License
+	along with GLPaper.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <paper.h>
@@ -25,8 +25,8 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include <glad/glad.h>
-#include <glad/glad_egl.h>
+#include <glad/egl.h>
+#include <glad/gles2.h>
 
 #include <wayland-egl.h>
 #include <wayland-client.h>
@@ -121,7 +121,7 @@ static void get_res(void* data, struct wl_output* output, uint32_t flags, int32_
 	}
 }
 
-static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* texture, GLuint vert, uint16_t width, uint16_t height) {
+static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* depthbuffer, GLuint* texture, GLuint vert, uint16_t width, uint16_t height) {
 	const char* frag_data[] = {
 		"#version 100\n"
 		"uniform sampler2D tex2D;"
@@ -163,8 +163,10 @@ static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* texture, GLuint vert, u
 		exit(1);
 	}
 
-	glGenFramebuffers(1, fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, *fbo);
+	glGenRenderbuffers(1, depthbuffer);
+	glBindRenderbuffer(GL_RENDERBUFFER, *depthbuffer);
+	glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, 4, GL_DEPTH_COMPONENT16, width, height);
+	glBindRenderbuffer(GL_RENDERBUFFER, *depthbuffer);
 
 	glGenTextures(1, texture);
 	glBindTexture(GL_TEXTURE_2D, *texture);
@@ -174,7 +176,11 @@ static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* texture, GLuint vert, u
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *texture, 0);
+	glGenFramebuffers(1, fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, *fbo);
+
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, *depthbuffer);
+	glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *texture, 0, 4);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -319,7 +325,7 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 		eglSwapInterval(egl_display, 0);
 	}
 
-	gladLoadGLES2Loader((GLADloadproc) eglGetProcAddress);
+	gladLoadGLES2(eglGetProcAddress);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glViewport(0, 0, output->width, output->height);
 	GLfloat vbo_data[] = {
@@ -422,6 +428,7 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 	GLuint fbo = 0;
 	GLuint final_prog = 0;
 	GLuint render_tex = 0;
+	GLuint depthbuffer = 0;
 	if(use_fbo) {
 		if(width == 0) {
 			width = output->width;
@@ -429,7 +436,7 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 		if(height == 0) {
 			height = output->height;
 		}
-		setup_fbo(&fbo, &final_prog, &render_tex, vert, width, height);
+		setup_fbo(&fbo, &final_prog, &depthbuffer, &render_tex, vert, width, height);
 	}
 
 	glDeleteShader(vert);
