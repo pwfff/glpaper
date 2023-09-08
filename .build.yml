@@ -1,0 +1,13 @@
+image: debian/sid
+packages:
+ - build-essential
+ - libwayland-dev
+ - libegl-dev
+ - pkg-config
+ - meson
+
+tasks:
+ - build: |
+    cd glpaper
+    meson build
+    ninja -C build
