@@ -45,7 +45,7 @@ static time_t start;
 
 struct node {
 	struct wl_output* output;
-	int32_t width, height;
+	int32_t width, height, transform;
 	struct wl_list link;
 };
 
@@ -81,13 +81,43 @@ static void config_surface(void* data, struct zwlr_layer_surface_v1* surface, ui
 	zwlr_layer_surface_v1_ack_configure(surface, serial);
 }
 
+static void get_geo(void *data, struct wl_output *output, int32_t x, int32_t y, int32_t physical_width, int32_t physical_height, int32_t subpixel, const char *make, const char *model, int32_t transform) {
+	(void) output;
+	(void) x;
+	(void) y;
+	(void) physical_width;
+	(void) physical_height;
+	(void) subpixel;
+	(void) make;
+	(void) model;
+
+	/*
+		0 - no transform
+		1 - 90 degrees counter-clockwise
+		2 - 180 degrees counter-clockwise
+		3 - 270 degrees counter-clockwise
+		4 - 180 degree flip around a vertical axis
+		5 - flip and rotate 90 degrees counter-clockwise
+		6 - flip and rotate 180 degrees counter-clockwise
+		7 - flip and rotate 270 degrees counter-clockwise
+	*/
+
+	struct node* node = data;
+	node->transform = transform;
+};
+
 static void get_res(void* data, struct wl_output* output, uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
 	(void) output;
 	(void) refresh;
 	if((flags & WL_OUTPUT_MODE_CURRENT) == WL_OUTPUT_MODE_CURRENT) {
 		struct node* node = data;
-		node->width = width;
-		node->height = height;
+		if ((node->transform & 1) == 1) {
+			node->width = height;
+			node->height = width;
+		} else {
+			node->width = width;
+			node->height = height;
+		}
 	}
 }
 
@@ -208,7 +238,7 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 
 		struct wl_output_listener out_listener = {
 			.done = nop,
-			.geometry = nop,
+			.geometry = get_geo,
 			.mode = get_res,
 			.scale = nop,
 			.name = nop,
