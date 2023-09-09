@@ -17,6 +17,7 @@
 
 #include <paper.h>
 
+#include <assert.h>
 #include <time.h>
 #include <utils.h>
 #include <stdio.h>
@@ -25,11 +26,12 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include <glad/egl.h>
-#include <glad/gles2.h>
-
-#include <wayland-egl.h>
 #include <wayland-client.h>
+#include <wayland-egl.h>
+
+#include <glad/gles2.h>
+#include <glad/egl.h>
+
 #include <xdg-output-unstable-v1-client-protocol.h>
 #include <wlr-layer-shell-unstable-v1-client-protocol.h>
 
@@ -163,9 +165,11 @@ static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* depthbuffer, GLuint* te
 		exit(1);
 	}
 
+	const int samples = 16;
+
 	glGenRenderbuffers(1, depthbuffer);
 	glBindRenderbuffer(GL_RENDERBUFFER, *depthbuffer);
-	glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, 4, GL_DEPTH_COMPONENT16, width, height);
+	glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT16, width, height);
 	glBindRenderbuffer(GL_RENDERBUFFER, *depthbuffer);
 
 	glGenTextures(1, texture);
@@ -180,7 +184,7 @@ static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* depthbuffer, GLuint* te
 	glBindFramebuffer(GL_FRAMEBUFFER, *fbo);
 
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, *depthbuffer);
-	glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *texture, 0, 4);
+	glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *texture, 0, samples);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -294,10 +298,18 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 	wl_surface_commit(wl_surface);
 	wl_display_roundtrip(wl);
 
-	struct wl_egl_window* window = wl_egl_window_create(wl_surface, output->width, output->height);
-	eglBindAPI(EGL_OPENGL_ES_API);
-	EGLDisplay egl_display = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, wl, NULL);
-	eglInitialize(egl_display, NULL, NULL);
+	int egl_version = gladLoaderLoadEGL(NULL);
+	printf("Loaded EGL %d.%d on first load.\n",
+		GLAD_VERSION_MAJOR(egl_version), GLAD_VERSION_MINOR(egl_version));
+
+	// ???
+	// eglBindAPI(EGL_OPENGL_ES_API);
+
+	EGLDisplay egl_display = eglGetDisplay(wl);
+	assert(eglInitialize(egl_display, NULL, NULL));
+
+	gladLoaderLoadEGL(egl_display);
+
 	const EGLint win_attrib[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
@@ -317,6 +329,7 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 	};
 	EGLContext ctx = eglCreateContext(egl_display, config, EGL_NO_CONTEXT, ctx_attrib);
 
+	struct wl_egl_window* window = wl_egl_window_create(wl_surface, output->width, output->height);
 	EGLSurface egl_surface = eglCreatePlatformWindowSurface(egl_display, config, window, NULL);
 	eglMakeCurrent(egl_display, egl_surface, egl_surface, ctx);
 	if(fps == 0) {
@@ -325,7 +338,8 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 		eglSwapInterval(egl_display, 0);
 	}
 
-	gladLoadGLES2(eglGetProcAddress);
+	assert(gladLoaderLoadGLES2());
+
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glViewport(0, 0, output->width, output->height);
 	GLfloat vbo_data[] = {
