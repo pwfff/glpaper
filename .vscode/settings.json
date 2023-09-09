@@ -1,0 +1,22 @@
+{
+    "C_Cpp.default.compileCommands": "build/compile_commands.json",
+    "files.associations": {
+        "*.tcc": "c",
+        "algorithm": "c",
+        "random": "c",
+        "format": "c",
+        "fstream": "c",
+        "istream": "c",
+        "numeric": "c",
+        "ostream": "c",
+        "sstream": "c",
+        "streambuf": "c",
+        "regex": "c",
+        "charconv": "c",
+        "iterator": "c",
+        "locale": "c",
+        "*.inc": "c",
+        "__config": "c",
+        "*.txx": "c"
+    }
+}

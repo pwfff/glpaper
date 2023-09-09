@@ -165,24 +165,25 @@ static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* depthbuffer, GLuint* te
 		exit(1);
 	}
 
-	const int samples = 16;
+	GLint samples = 0;
+	glGetIntegerv(GL_MAX_SAMPLES_EXT, &samples);
+	printf("Using max multisample samples: %d\n", samples);
 
 	glGenRenderbuffers(1, depthbuffer);
 	glBindRenderbuffer(GL_RENDERBUFFER, *depthbuffer);
 	glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT16, width, height);
-	glBindRenderbuffer(GL_RENDERBUFFER, *depthbuffer);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
 	glGenTextures(1, texture);
 	glBindTexture(GL_TEXTURE_2D, *texture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
 	glGenFramebuffers(1, fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, *fbo);
-
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, *depthbuffer);
 	glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *texture, 0, samples);
 
@@ -218,7 +219,7 @@ static void draw_fbo(GLuint fbo, GLuint texture, GLuint main_prog, GLuint final_
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
 
-void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name, uint16_t width, uint16_t height) {
+void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name, uint16_t width, uint16_t height, uint16_t samples) {
 	monitor = _monitor;
 	start = utils_get_time_millis();
 	wl_list_init(&outputs);
@@ -310,18 +311,24 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 
 	gladLoaderLoadEGL(egl_display);
 
+	printf("requesting %d samples\n", samples);
 	const EGLint win_attrib[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
 		EGL_RED_SIZE, 8,
 		EGL_GREEN_SIZE, 8,
 		EGL_BLUE_SIZE, 8,
+		EGL_DEPTH_SIZE, 16,
+		EGL_SAMPLE_BUFFERS, 1,
+		EGL_SAMPLES, samples,
 		EGL_NONE
 	};
 
 	EGLConfig config;
 	EGLint config_len;
 	eglChooseConfig(egl_display, win_attrib, &config, 1, &config_len);
+	printf("%d configs matched\n", config_len);
+	assert(config_len);
 	const EGLint ctx_attrib[] = {
 		EGL_CONTEXT_MAJOR_VERSION, 2,
 		EGL_CONTEXT_MINOR_VERSION, 0,
@@ -438,20 +445,21 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 	}
 
 
-	bool use_fbo = width > 0 || height > 0;
 	GLuint fbo = 0;
 	GLuint final_prog = 0;
 	GLuint render_tex = 0;
 	GLuint depthbuffer = 0;
-	if(use_fbo) {
-		if(width == 0) {
-			width = output->width;
-		}
-		if(height == 0) {
-			height = output->height;
-		}
-		setup_fbo(&fbo, &final_prog, &depthbuffer, &render_tex, vert, width, height);
+	if(width == 0) {
+		width = output->width;
 	}
+	if(height == 0) {
+		height = output->height;
+	}
+
+	width = width * 2;
+	height = height * 2;
+
+	setup_fbo(&fbo, &final_prog, &depthbuffer, &render_tex, vert, width, height);
 
 	glDeleteShader(vert);
 	glDeleteShader(frag);
@@ -464,11 +472,7 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 		if(wl_display_flush(wl) == -1) {
 			exit(0);
 		}
-		if(use_fbo) {
-			draw_fbo(fbo, render_tex, shader_prog, final_prog, width, height);
-		} else {
-			draw(shader_prog);
-		}
+		draw_fbo(fbo, render_tex, shader_prog, final_prog, width, height);
 		eglSwapBuffers(egl_display, egl_surface);
 		if(fps != 0) {
 			int64_t sleep = (1000 / fps) - (utils_get_time_millis() - frame_start);

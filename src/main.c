@@ -93,8 +93,9 @@ int main(int argc, char** argv) {
 		char* layer = NULL;
 		char* width_str = NULL;
 		char* height_str = NULL;
+		char* samples_str = NULL;
 		char opt;
-		while((opt = getopt_long(argc, argv, "hFf:l:W:H:", opts, NULL)) != -1) {
+		while((opt = getopt_long(argc, argv, "hFf:l:W:H:S:", opts, NULL)) != -1) {
 			switch(opt) {
 			case 'h':
 				print_usage(argv);
@@ -119,6 +120,9 @@ int main(int argc, char** argv) {
 			case 'H':
 				height_str = optarg;
 				break;
+			case 'S':
+				samples_str = optarg;
+				break;
 			}
 		}
 		uint16_t fps;
@@ -142,11 +146,18 @@ int main(int argc, char** argv) {
 			height = strtol(height_str, NULL, 10);
 		}
 
+		uint16_t samples;
+		if(samples_str == NULL) {
+			samples = 0;
+		} else {
+			samples = strtol(samples_str, NULL, 10);
+		}
+
 		if(optind + 1 >= argc) {
 			print_usage(argv);
 		}
 
-		paper_init(argv[optind], argv[optind + 1], fps, layer, width, height);
+		paper_init(argv[optind], argv[optind + 1], fps, layer, width, height, samples);
 	} else {
 		print_usage(argv);
 	}
