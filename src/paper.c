@@ -123,7 +123,7 @@ static void get_res(void* data, struct wl_output* output, uint32_t flags, int32_
 	}
 }
 
-static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* depthbuffer, GLuint* texture, GLuint vert, uint16_t width, uint16_t height) {
+static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* textures, GLuint vert, uint16_t width, uint16_t height) {
 	const char* frag_data[] = {
 		"#version 100\n"
 		"uniform sampler2D tex2D;"
@@ -169,23 +169,20 @@ static void setup_fbo(GLuint* fbo, GLuint* prog, GLuint* depthbuffer, GLuint* te
 	glGetIntegerv(GL_MAX_SAMPLES_EXT, &samples);
 	printf("Using max multisample samples: %d\n", samples);
 
-	glGenRenderbuffers(1, depthbuffer);
-	glBindRenderbuffer(GL_RENDERBUFFER, *depthbuffer);
-	glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT16, width, height);
-	glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-	glGenTextures(1, texture);
-	glBindTexture(GL_TEXTURE_2D, *texture);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-
 	glGenFramebuffers(1, fbo);
 	glBindFramebuffer(GL_FRAMEBUFFER, *fbo);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, *depthbuffer);
-	glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *texture, 0, samples);
+
+	for (int i = 0; i < 4; i++) {
+		glGenTextures(1, &textures[i]);
+		glBindTexture(GL_TEXTURE_2D, textures[i]);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textures[i], 0);
+	}
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -200,23 +197,27 @@ static void draw(GLuint prog) {
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
 
-static void draw_fbo(GLuint fbo, GLuint texture, GLuint main_prog, GLuint final_prog, uint16_t width, uint16_t height) {
+static void draw_fbo(GLuint fbo, GLuint* textures, GLuint main_prog, GLuint final_prog, uint16_t width, uint16_t height) {
 	glViewport(0, 0, width, height);
 	glUseProgram(main_prog);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	GLint time_var = glGetUniformLocation(main_prog, "time");
-	glUniform1f(time_var, (utils_get_time_millis() - start) / 1000.0f);
-	GLint resolution = glGetUniformLocation(main_prog, "resolution");
-	glUniform2f(resolution, width, height);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-	glViewport(0, 0, output->width, output->height);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glUseProgram(final_prog);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	GLint tex2D = glGetUniformLocation(final_prog, "tex2D");
-	glUniform1i(tex2D, 0);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	for (int i=0; i<4; i++) {
+		GLint time_var = glGetUniformLocation(main_prog, "time");
+		glUniform1f(time_var, (utils_get_time_millis() - start) / 1000.0f);
+		GLint resolution = glGetUniformLocation(main_prog, "resolution");
+		glUniform2f(resolution, width, height);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+		glViewport(0, 0, output->width, output->height);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glUseProgram(final_prog);
+	
+		glBindTexture(GL_TEXTURE_2D, textures[i]);
+		GLint tex2D = glGetUniformLocation(final_prog, "tex2D");
+		glUniform1i(tex2D, 0);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	}
 }
 
 void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name, uint16_t width, uint16_t height, uint16_t samples) {
@@ -447,8 +448,7 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 
 	GLuint fbo = 0;
 	GLuint final_prog = 0;
-	GLuint render_tex = 0;
-	GLuint depthbuffer = 0;
+	GLuint texes[4] = {0,0,0,0};
 	if(width == 0) {
 		width = output->width;
 	}
@@ -456,10 +456,10 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 		height = output->height;
 	}
 
-	width = width * 2;
-	height = height * 2;
+	// width = width * 2;
+	// height = height * 2;
 
-	setup_fbo(&fbo, &final_prog, &depthbuffer, &render_tex, vert, width, height);
+	setup_fbo(&fbo, &final_prog, texes, vert, width, height);
 
 	glDeleteShader(vert);
 	glDeleteShader(frag);
@@ -472,7 +472,7 @@ void paper_init(char* _monitor, char* frag_path, uint16_t fps, char* layer_name,
 		if(wl_display_flush(wl) == -1) {
 			exit(0);
 		}
-		draw_fbo(fbo, render_tex, shader_prog, final_prog, width, height);
+		draw_fbo(fbo, texes, shader_prog, final_prog, width, height);
 		eglSwapBuffers(egl_display, egl_surface);
 		if(fps != 0) {
 			int64_t sleep = (1000 / fps) - (utils_get_time_millis() - frame_start);
